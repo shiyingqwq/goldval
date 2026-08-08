@@ -91,7 +91,34 @@ test_that("bootstrap preserves covariates used by nuisance formulas", {
   )
 
   expect_true(all(c("q_status", "pi_status") %in% names(b$replicate_diagnostics)))
-  expect_false(all(b$replicates$estimate_status %in% c("q_failed", "pi_failed", "estimation_failed")))
+  expect_false(any(b$replicates$estimate_status == "q_failed"))
+  expect_false(any(b$replicates$estimate_status == "pi_failed"))
+  expect_true(all(b$replicate_diagnostics$q_status != "failed"))
+  expect_true(all(b$replicate_diagnostics$pi_status != "failed"))
+})
+
+test_that("OR-only bootstrap does not fit verification model", {
+  obj <- make_bootstrap_fixture()
+  b <- bootstrap_goldval(obj, method = "OR", metrics = "auc", B = 8, seed = 131)
+
+  expect_true(all(b$replicate_diagnostics$q_status %in% c("ok", "warning")))
+  expect_true(all(b$replicate_diagnostics$pi_status == "not_fit"))
+  expect_false(any(b$replicates$estimate_status == "pi_failed"))
+})
+
+test_that("overall_status does not mark failed estimators as success", {
+  n <- 120
+  pred <- stats::plogis(seq(-2, 2, length.out = n))
+  proxy <- rep(c(0L, 1L), length.out = n)
+  verified <- rep(c(1L, 0L), length.out = n)
+  gold <- ifelse(verified == 1L, 1L, NA)
+  obj <- goldval(pred, proxy, gold, verified)
+
+  b <- bootstrap_goldval(obj, method = c("naive", "gold_only"), metrics = "auc", B = 5, seed = 132)
+
+  failed <- b$replicates[b$replicates$estimate_status != "ok", , drop = FALSE]
+  expect_gt(nrow(failed), 0)
+  expect_false(any(b$replicate_diagnostics$overall_status == "success"))
 })
 
 test_that("bootstrap records nuisance warning bookkeeping separately", {

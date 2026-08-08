@@ -80,8 +80,16 @@ estimate_bootstrap_target <- function(object, analysis, method, metrics, outcome
 estimate_bootstrap_target_data <- function(dat, analysis, method, metrics, outcome_formula, verification_formula) {
   if (analysis != "performance") stop("Unsupported analysis.", call. = FALSE)
   dat$qlogis_pred <- qlogis_clip(dat$pred)
-  nuisance <- if (any(method %in% c("OR", "AIPW"))) {
-    fit_goldval_nuisance(dat, outcome_formula, verification_formula)
+  need_q <- any(method %in% c("OR", "AIPW"))
+  need_pi <- any(method == "AIPW")
+  nuisance <- if (need_q || need_pi) {
+    fit_goldval_nuisance(
+      dat,
+      outcome_formula,
+      verification_formula,
+      fit_outcome = need_q,
+      fit_verification = need_pi
+    )
   } else {
     empty_performance_nuisance(dat)
   }
@@ -225,9 +233,17 @@ run_one_bootstrap_replicate <- function(boot_dat,
 
   dat <- boot_obj$data
   dat$qlogis_pred <- qlogis_clip(dat$pred)
+  need_q <- any(method %in% c("OR", "AIPW"))
+  need_pi <- any(method == "AIPW")
   nuisance <- try({
-    if (any(method %in% c("OR", "AIPW"))) {
-      fit_goldval_nuisance(dat, outcome_formula, verification_formula)
+    if (need_q || need_pi) {
+      fit_goldval_nuisance(
+        dat,
+        outcome_formula,
+        verification_formula,
+        fit_outcome = need_q,
+        fit_verification = need_pi
+      )
     } else {
       empty_performance_nuisance(dat)
     }
@@ -255,13 +271,17 @@ run_one_bootstrap_replicate <- function(boot_dat,
   estimates <- estimates[, c("replicate", "method", "metric", "estimate", "n_used", "estimate_status")]
   list(
     estimates = estimates,
-    diagnostics = replicate_diagnostic_row(replicate, overall_replicate_status(nuisance), nuisance)
+    diagnostics = replicate_diagnostic_row(replicate, overall_replicate_status(nuisance, estimates), nuisance)
   )
 }
 
-overall_replicate_status <- function(nuisance) {
+overall_replicate_status <- function(nuisance, estimates) {
   if (nuisance$outcome_model_status == "failed") return("q_failed")
   if (nuisance$verification_model_status == "failed") return("pi_failed")
+  if (!all(estimates$estimate_status == "ok")) {
+    if (all(estimates$estimate_status != "ok")) return("estimation_failed")
+    return("partial_failure")
+  }
   "success"
 }
 

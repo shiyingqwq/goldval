@@ -67,7 +67,7 @@ sample validation rows with replacement
 create bootstrap goldval object
         |
         v
-refit q model, if corrected method requested
+refit q model, if OR or AIPW requested
         |
         v
 refit pi model, if AIPW requested
@@ -108,6 +108,13 @@ Each bootstrap row-sample has one replicate-level diagnostic status stored in
 - `q_failed`
 - `pi_failed`
 - `estimation_failed`
+- `partial_failure`
+
+`success` means every requested method/metric estimate in that bootstrap
+row-sample has `estimate_status = "ok"`. If nuisance fitting succeeds but at
+least one requested method/metric estimate fails, `overall_status` is
+`partial_failure`. If all requested method/metric estimates fail after nuisance
+fitting succeeds, `overall_status` is `estimation_failed`.
 
 The method/metric layer has a separate `replicates$estimate_status`.
 
@@ -131,6 +138,9 @@ A non-finite estimate must not be marked as `ok`.
 - `pi_warning_n`
 - `q_warning_messages`
 - `pi_warning_messages`
+
+For OR-only analyses, the verification model is not fitted and `pi_status` is
+`not_fit`.
 
 Replicate failure must not abort the entire bootstrap.
 
