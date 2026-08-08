@@ -3,6 +3,7 @@
 ^results$
 ^figures$
 ^data$
+^review_packages$
 ^Rplots[.]pdf$
 ^[.][.]Rcheck$
 ^[.]Rproj[.]user$
@@ -12,3 +13,5 @@
 ^docs$
 ^goldval[.]Rproj$
 ^_pkgdown[.]yml$
+^doc$
+^Meta$

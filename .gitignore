@@ -33,3 +33,5 @@ data/local/
 .Renviron
 .env
 .env.*
+/doc/
+/Meta/

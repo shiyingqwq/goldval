@@ -1,0 +1,208 @@
+---
+title: "goldval workflow with synthetic data"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{goldval workflow with synthetic data}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 5
+)
+```
+
+```{r setup}
+library(goldval)
+```
+
+## The problem
+
+Clinical prediction models are often evaluated in data where the model's
+predicted risk is available for every patient, but the best outcome label is
+not. A common structure is:
+
+- a fixed predicted risk for every patient;
+- an error-prone proxy outcome for every patient;
+- a gold-standard outcome only for a reviewed subset;
+- a review process that may depend on observed patient information.
+
+The goal of `goldval` is to organize this validation workflow. It does not
+claim new estimator theory.
+
+## Generate a synthetic example
+
+This vignette uses fully synthetic data. The true outcome is kept only so we can
+compute an oracle simulation reference; real applications do not have this
+column for the full cohort.
+
+```{r synthetic-data}
+set.seed(20260808)
+
+n <- 1800L
+x1 <- rnorm(n)
+x2 <- rbinom(n, 1, 0.45)
+
+true_risk <- plogis(-1.35 + 1.15 * x1 + 0.65 * x2)
+true_outcome <- rbinom(n, 1, true_risk)
+
+pred <- plogis(-1.20 + 0.95 * x1 + 0.55 * x2 + rnorm(n, sd = 0.25))
+
+proxy <- ifelse(
+  true_outcome == 1L,
+  rbinom(n, 1, 0.82),
+  rbinom(n, 1, 0.10)
+)
+
+review_probability <- plogis(-3.15 + log(4) * proxy + 0.80 * qlogis(pmin(pmax(pred, 1e-6), 1 - 1e-6)))
+verified <- rbinom(n, 1, review_probability)
+
+gold <- ifelse(verified == 1L, true_outcome, NA)
+
+dat <- data.frame(
+  pred = pred,
+  proxy = proxy,
+  gold = gold,
+  verified = verified,
+  true_outcome = true_outcome
+)
+
+mean(dat$verified)
+sum(dat$verified)
+```
+
+## Construct a goldval object
+
+```{r goldval-object}
+g <- goldval(
+  pred = dat$pred,
+  proxy_outcome = dat$proxy,
+  gold_outcome = dat$gold,
+  verified = dat$verified
+)
+
+g
+```
+
+## Diagnose verification
+
+`diagnose_goldval()` summarizes the reviewed subset, proxy enrichment,
+positivity, and nuisance-model status.
+
+```{r diagnose}
+diag <- diagnose_goldval(g)
+diag
+```
+
+The review process is selective in this simulation: patients with higher
+predicted risk are more likely to receive gold-standard review.
+
+```{r review-by-risk}
+risk_group <- cut(dat$pred, breaks = quantile(dat$pred, probs = seq(0, 1, 0.1)), include.lowest = TRUE)
+review_by_risk <- aggregate(dat$verified, by = list(risk_decile = risk_group), FUN = mean)
+
+plot(
+  seq_len(nrow(review_by_risk)),
+  review_by_risk$x,
+  type = "b",
+  xlab = "Predicted-risk decile",
+  ylab = "Gold-standard review fraction",
+  ylim = c(0, max(review_by_risk$x) * 1.15)
+)
+```
+
+## Performance
+
+`performance()` compares validation estimates using the proxy outcome, the
+reviewed gold subset, and corrected analyses.
+
+```{r performance}
+perf <- performance(
+  g,
+  method = c("naive", "gold_only", "OR", "AIPW"),
+  metrics = c("auc", "brier")
+)
+
+perf
+```
+
+Because this is a simulation, we can compute an oracle reference using the full
+true outcome. This reference is unavailable in real validation studies.
+
+```{r oracle-reference}
+oracle <- goldval(
+  pred = dat$pred,
+  proxy_outcome = dat$true_outcome,
+  gold_outcome = ifelse(dat$verified == 1L, dat$true_outcome, NA),
+  verified = dat$verified
+)
+
+oracle_perf <- performance(oracle, method = "naive", metrics = c("auc", "brier"))
+oracle_perf$estimates$method <- "oracle_simulation_reference"
+oracle_perf$estimates
+```
+
+## Calibration
+
+`calibration()` returns weak calibration parameters and flexible calibration
+curves. The curve plot is often the most useful first look at how proxy,
+gold-only, and corrected validation differ.
+
+```{r calibration}
+cal <- calibration(
+  g,
+  method = c("naive", "gold_only", "OR", "AIPW"),
+  type = c("weak", "curve")
+)
+
+cal
+```
+
+```{r calibration-plot}
+plot(cal)
+```
+
+## Scalar uncertainty
+
+`bootstrap_goldval()` computes percentile bootstrap intervals for scalar
+estimates. This example uses a small number of bootstrap replicates only to keep
+the vignette fast; substantive analyses should use a larger value chosen for the
+intended application.
+
+```{r bootstrap}
+boot <- bootstrap_goldval(
+  g,
+  method = "AIPW",
+  metrics = c("auc", "brier"),
+  B = 50,
+  seed = 20260808
+)
+
+boot
+```
+
+The bootstrap object also stores replicate-level diagnostics and
+method/metric-level failure summaries.
+
+```{r bootstrap-diagnostics}
+boot$failure_summary
+head(boot$replicate_diagnostics)
+```
+
+## Limitations
+
+This vignette demonstrates the user-facing workflow rather than new statistical
+theory. Current boundaries are:
+
+- flexible calibration curve confidence intervals are out of scope;
+- percentile uncertainty has been validated only in selected AIPW simulation
+  scenarios;
+- extreme selective verification with small gold-standard samples may yield
+  undercoverage for some metrics, especially Brier score or weak calibration
+  slope;
+- nuisance-model warnings should be reviewed rather than ignored;
+- the software does not establish novel estimator theory.
