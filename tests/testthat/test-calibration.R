@@ -41,7 +41,7 @@ test_that("naive calibration curve agrees with direct spline fit", {
 
   cal <- calibration(obj, method = "naive", type = "curve", grid = grid, curve_df = 4)
   direct <- fit_spline_curve(y, pred, grid, 4)
-  expect_equal(cal$curves$calibrated_risk, direct, tolerance = 1e-10)
+  expect_equal(cal$curves$calibrated_risk, direct$calibrated_risk, tolerance = 1e-10)
 })
 
 test_that("gold-only curve ignores unverified gold outcomes", {
@@ -109,6 +109,33 @@ test_that("OR and AIPW recover known weak calibration under proxy error", {
   expect_lt(abs(aipw$weak_calibration_slope - 0.7), 0.15)
 })
 
+test_that("AIPW weak calibration recovers known truth under selective verification", {
+  set.seed(27)
+  n <- 10000
+  pred <- stats::plogis(stats::rnorm(n))
+  lp <- qlogis(pred)
+  true_prob <- stats::plogis(-0.5 + 0.7 * lp)
+  y <- stats::rbinom(n, 1, true_prob)
+  proxy <- y
+  proxy[y == 1L] <- stats::rbinom(sum(y == 1L), 1, 0.80)
+  proxy[y == 0L] <- stats::rbinom(sum(y == 0L), 1, 0.05)
+  review_prob <- stats::plogis(-1.2 + log(4) * proxy + 0.75 * as.numeric(scale(lp)))
+  verified <- stats::rbinom(n, 1, review_prob)
+  gold <- ifelse(verified == 1L, y, NA)
+  obj <- goldval(pred, proxy, gold, verified)
+
+  cal <- calibration(
+    obj,
+    method = "AIPW",
+    type = "weak",
+    verification_formula = verified ~ proxy_outcome + qlogis_pred
+  )
+  expect_equal(cal$nuisance$verification_model_status, "ok")
+  expect_lt(abs(cal$parameters$weak_calibration_intercept + 0.5), 0.15)
+  expect_lt(abs(cal$parameters$weak_calibration_slope - 0.7), 0.15)
+  expect_equal(cal$parameters$weak_status, "ok")
+})
+
 test_that("failed nuisance model yields NA corrected calibration", {
   pred <- c(0.1, 0.2, 0.8, 0.9, 0.3, 0.7)
   proxy <- c(0, 0, 1, 1, 0, 1)
@@ -118,6 +145,7 @@ test_that("failed nuisance model yields NA corrected calibration", {
   cal <- calibration(obj, method = c("OR", "AIPW"), outcome_formula = gold_outcome ~ missing_column)
   expect_equal(cal$nuisance$outcome_model_status, "failed")
   expect_true(all(is.na(cal$parameters$weak_calibration_intercept)))
+  expect_true(all(cal$parameters$weak_status == "nuisance_failed"))
   expect_true(all(is.na(cal$curves$calibrated_risk)))
 })
 
@@ -128,6 +156,7 @@ test_that("calibration validates curve_df and grid", {
   gold <- ifelse(verified == 1L, proxy, NA)
   obj <- goldval(pred, proxy, gold, verified)
   expect_error(calibration(obj, curve_df = 3.7), "positive integer")
+  expect_error(calibration(obj, grid = c(0.2, 0.2)), "two distinct")
   expect_error(calibration(obj, grid = c(0.1, NA)), "finite probabilities")
   expect_error(calibration(obj, grid = c(-0.1, 0.5)), "finite probabilities")
   cal <- calibration(obj, method = "naive", type = "curve", grid = c(0.8, 0.2, 0.2))
@@ -143,6 +172,15 @@ test_that("calibration curve fails clearly with insufficient unique predictions"
   cal <- calibration(obj, method = "naive", type = "curve", curve_df = 4, grid = c(0.1, 0.2, 0.3))
   expect_true(all(is.na(cal$curves$calibrated_risk)))
   expect_true(all(cal$curves$curve_status == "insufficient_unique_predictions"))
+})
+
+test_that("calibration curve records boundary clipping diagnostics", {
+  pred <- seq(0.01, 0.99, length.out = 80)
+  y <- ifelse(pred < 0.5, -0.5, 1.5)
+  grid <- seq(0.01, 0.99, length.out = 20)
+  curve <- fit_spline_curve(y, pred, grid, 4)
+  expect_gt(curve$clipped_fraction, 0)
+  expect_true(curve$raw_curve_min < 0 || curve$raw_curve_max > 1)
 })
 
 test_that("plot.goldval_calibration runs", {

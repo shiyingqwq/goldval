@@ -84,14 +84,16 @@ estimate_weak_calibration <- function(dat, method, nuisance) {
       method = method,
       weak_calibration_intercept = NA_real_,
       weak_calibration_slope = NA_real_,
-      n_used = n_used_for_method(dat, method)
+      n_used = n_used_for_method(dat, method),
+      weak_status = weak_status_for_failure(dat, method, nuisance, "optimization_failed")
     ))
   }
   data.frame(
     method = method,
     weak_calibration_intercept = fit$par[[1]],
     weak_calibration_slope = fit$par[[2]],
-    n_used = n_used_for_method(dat, method)
+    n_used = n_used_for_method(dat, method),
+    weak_status = "ok"
   )
 }
 
@@ -131,16 +133,23 @@ estimate_calibration_curve <- function(dat, method, nuisance, grid, curve_df) {
       pred = grid,
       calibrated_risk = NA_real_,
       curve_status = "insufficient_unique_predictions",
-      actual_unique_predictions = unique_pred_n
+      actual_unique_predictions = unique_pred_n,
+      raw_curve_min = NA_real_,
+      raw_curve_max = NA_real_,
+      clipped_fraction = NA_real_
     ))
   }
   curve <- fit_spline_curve(y[ok], dat$pred[ok], grid, curve_df)
+  curve_status <- if (curve$clipped_fraction > 0) "ok_with_clipping" else "ok"
   data.frame(
     method = method,
     pred = grid,
-    calibrated_risk = curve,
-    curve_status = "ok",
-    actual_unique_predictions = unique_pred_n
+    calibrated_risk = curve$calibrated_risk,
+    curve_status = curve_status,
+    actual_unique_predictions = unique_pred_n,
+    raw_curve_min = curve$raw_curve_min,
+    raw_curve_max = curve$raw_curve_max,
+    clipped_fraction = curve$clipped_fraction
   )
 }
 
@@ -165,8 +174,13 @@ calibration_curve_outcome <- function(dat, method, nuisance) {
 fit_spline_curve <- function(y, pred, grid, curve_df) {
   dat <- data.frame(y = y, lp = qlogis_clip(pred))
   fit <- stats::lm(y ~ splines::ns(lp, df = curve_df), data = dat)
-  out <- stats::predict(fit, newdata = data.frame(lp = qlogis_clip(grid)))
-  pmin(pmax(as.numeric(out), 0), 1)
+  raw <- as.numeric(stats::predict(fit, newdata = data.frame(lp = qlogis_clip(grid))))
+  list(
+    calibrated_risk = pmin(pmax(raw, 0), 1),
+    raw_curve_min = min(raw, na.rm = TRUE),
+    raw_curve_max = max(raw, na.rm = TRUE),
+    clipped_fraction = mean(raw < 0 | raw > 1, na.rm = TRUE)
+  )
 }
 
 n_used_for_method <- function(dat, method) {
@@ -185,13 +199,31 @@ validate_curve_df <- function(curve_df) {
 }
 
 validate_calibration_grid <- function(grid) {
-  if (!is.numeric(grid) || length(grid) < 2L) {
-    stop("`grid` must be a numeric vector with at least two values.", call. = FALSE)
+  if (!is.numeric(grid)) {
+    stop("`grid` must be numeric.", call. = FALSE)
   }
   if (anyNA(grid) || any(!is.finite(grid)) || any(grid < 0 | grid > 1)) {
     stop("`grid` must contain finite probabilities in [0, 1].", call. = FALSE)
   }
-  sort(unique(grid))
+  grid <- sort(unique(grid))
+  if (length(grid) < 2L) {
+    stop("`grid` must contain at least two distinct probabilities.", call. = FALSE)
+  }
+  grid
+}
+
+weak_status_for_failure <- function(dat, method, nuisance, default_status) {
+  if (method %in% c("OR", "AIPW") && all(is.na(nuisance$q_hat))) {
+    return("nuisance_failed")
+  }
+  if (method == "AIPW" && all(is.na(nuisance$pi_hat))) {
+    return("nuisance_failed")
+  }
+  y <- calibration_curve_outcome(dat, method, nuisance)
+  if (sum(!is.na(y)) < 10L || length(unique(stats::na.omit(y))) < 2L) {
+    return("insufficient_events")
+  }
+  default_status
 }
 
 #' @export
