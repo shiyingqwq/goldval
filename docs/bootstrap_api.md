@@ -92,20 +92,45 @@ list(
   estimates = data.frame(),
   intervals = data.frame(),
   replicates = data.frame(),
+  replicate_diagnostics = data.frame(),
   failure_summary = data.frame(),
   settings = list(),
   call = match.call()
 )
 ```
 
-## Replicate Status
+## Replicate and Estimate Status
 
-Each replicate has one status:
+Each bootstrap row-sample has one replicate-level diagnostic status stored in
+`replicate_diagnostics$overall_status`:
 
 - `success`
 - `q_failed`
 - `pi_failed`
 - `estimation_failed`
+
+The method/metric layer has a separate `replicates$estimate_status`.
+
+Allowed estimate statuses:
+
+- `ok`
+- `q_failed`
+- `pi_failed`
+- `nuisance_failed`
+- `optimization_failed`
+- `insufficient_events`
+- `estimation_failed`
+
+A non-finite estimate must not be marked as `ok`.
+
+`replicate_diagnostics` also records:
+
+- `q_status`
+- `pi_status`
+- `q_warning_n`
+- `pi_warning_n`
+- `q_warning_messages`
+- `pi_warning_messages`
 
 Replicate failure must not abort the entire bootstrap.
 
@@ -113,8 +138,16 @@ No silent fallback to prevalence or intercept-only nuisance models is allowed.
 
 ## CI Rule
 
-Intervals are percentile intervals using successful non-missing bootstrap
-replicates.
+Intervals are percentile intervals using bootstrap estimates with
+`estimate_status = "ok"` and finite estimates.
+
+If the original-sample point estimate is non-finite or has
+`estimate_status != "ok"`, do not report a CI for that method/metric. Return
+`NA` interval bounds and set:
+
+```text
+interval_status = "ORIGINAL_ESTIMATE_FAILED"
+```
 
 If success rate for a method/metric is below `min_success_rate`, do not report
 a CI for that method/metric. Return `NA` interval bounds and set:
