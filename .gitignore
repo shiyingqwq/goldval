@@ -1,0 +1,35 @@
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+
+*.Rcheck/
+*.tar.gz
+
+.DS_Store
+Thumbs.db
+
+# Local / temporary results
+results/
+figures/
+tmp/
+cache/
+review_packages/
+Rplots.pdf
+
+# Research-only material
+goldval_feasibility/
+pilot/
+internal/
+private/
+manuscript/
+
+# Local datasets
+data/
+data-raw/private/
+data/local/
+
+# Secrets
+.Renviron
+.env
+.env.*

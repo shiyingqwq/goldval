@@ -1,0 +1,4 @@
+S3method(print,goldval_diagnostics)
+S3method(print,goldval_object)
+export(diagnose_goldval)
+export(goldval)

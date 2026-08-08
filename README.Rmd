@@ -1,0 +1,80 @@
+---
+title: "goldval"
+output: github_document
+---
+
+`goldval` is an early-stage R workflow for clinical prediction model validation
+when a proxy outcome is observed for everyone and a gold-standard outcome is
+available only for a reviewed subset.
+
+This package is positioned as biomedical software/workflow infrastructure, not
+as a claim of new AUC, Brier, or calibration-slope estimators.
+
+## Problem
+
+Clinical prediction models are often validated using convenient outcomes from
+ICD codes, EHR phenotypes, claims, or registries. These proxy outcomes can be
+wrong. A smaller chart-reviewed subset may contain the gold-standard outcome,
+but review is often selective: proxy-positive or high-risk patients are more
+likely to be reviewed.
+
+```text
+             Full validation cohort
+        +-----------------------------+
+        | prediction p                |
+        | proxy outcome Y*            |
+        +-----------------------------+
+                      |
+            selective chart review
+                      |
+                      v
+             +----------------+
+             | gold outcome Y |
+             +----------------+
+```
+
+## Quick Start
+
+```{r eval=FALSE}
+library(goldval)
+
+x <- goldval(
+  data = validation_data,
+  pred = "predicted_risk",
+  proxy_outcome = "ehr_outcome",
+  gold_outcome = "chart_review_outcome",
+  verified = "reviewed"
+)
+
+diagnose_goldval(x)
+```
+
+`goldval()` also accepts direct vectors:
+
+```{r eval=FALSE}
+x <- goldval(
+  pred = validation_data$predicted_risk,
+  proxy_outcome = validation_data$ehr_outcome,
+  gold_outcome = validation_data$chart_review_outcome,
+  verified = validation_data$reviewed
+)
+```
+
+## Current MVP Scope
+
+Implemented:
+
+- `goldval()`: validated object construction;
+- `diagnose_goldval()`: selective verification and positivity diagnostics.
+
+Next functions:
+
+- `performance()`;
+- `calibration()`.
+
+Explicit non-goals:
+
+- no novel AUC estimator claim;
+- no novel Brier estimator claim;
+- no novel calibration-slope/intercept estimator claim;
+- no DCA, NRI/IDI, survival, fairness, SHAP, or simultaneous bands in v0.1.

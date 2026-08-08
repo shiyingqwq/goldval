@@ -1,0 +1,14 @@
+^goldval_feasibility$
+^pilot$
+^results$
+^figures$
+^data$
+^Rplots[.]pdf$
+^[.][.]Rcheck$
+^[.]Rproj[.]user$
+^goldval_[0-9].*[.]tar[.]gz$
+^README[.]Rmd$
+^[.]github$
+^docs$
+^goldval[.]Rproj$
+^_pkgdown[.]yml$

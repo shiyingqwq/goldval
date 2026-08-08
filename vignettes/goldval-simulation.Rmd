@@ -1,0 +1,14 @@
+---
+title: "Simulation workflow for goldval"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Simulation workflow for goldval}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+This vignette will demonstrate proxy outcomes, partial gold-standard review,
+selective verification diagnostics, and naive/gold-only/corrected validation.
+
+The current file is a placeholder until `performance()` and `calibration()` are
+implemented.
