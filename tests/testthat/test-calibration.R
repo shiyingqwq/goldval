@@ -7,10 +7,10 @@ test_that("calibration estimates perfect calibration approximately", {
   gold <- ifelse(verified == 1L, y, NA)
   obj <- goldval(pred, y, gold, verified)
 
-  cal <- calibration(obj, method = "naive", type = c("intercept", "slope"))
+  cal <- calibration(obj, method = "naive", type = "weak")
   expect_s3_class(cal, "goldval_calibration")
-  expect_lt(abs(cal$parameters$cal_intercept), 0.15)
-  expect_lt(abs(cal$parameters$cal_slope - 1), 0.2)
+  expect_lt(abs(cal$parameters$weak_calibration_intercept), 0.15)
+  expect_lt(abs(cal$parameters$weak_calibration_slope - 1), 0.2)
 })
 
 test_that("calibration detects systematic intercept and slope", {
@@ -24,9 +24,9 @@ test_that("calibration detects systematic intercept and slope", {
   gold <- ifelse(verified == 1L, y, NA)
   obj <- goldval(pred, y, gold, verified)
 
-  cal <- calibration(obj, method = "naive", type = c("intercept", "slope"))
-  expect_lt(abs(cal$parameters$cal_intercept + 0.5), 0.12)
-  expect_lt(abs(cal$parameters$cal_slope - 0.7), 0.12)
+  cal <- calibration(obj, method = "naive", type = "weak")
+  expect_lt(abs(cal$parameters$weak_calibration_intercept + 0.5), 0.12)
+  expect_lt(abs(cal$parameters$weak_calibration_slope - 0.7), 0.12)
 })
 
 test_that("naive calibration curve agrees with direct spline fit", {
@@ -63,19 +63,50 @@ test_that("gold-only curve ignores unverified gold outcomes", {
   expect_equal(c1$curves$calibrated_risk, c2$curves$calibrated_risk)
 })
 
-test_that("OR and AIPW calibration are finite with perfect proxy", {
+test_that("OR and AIPW weak calibration match naive with perfect proxy and random verification", {
   set.seed(24)
-  n <- 800
+  n <- 3000
   pred <- stats::plogis(stats::rnorm(n))
   y <- stats::rbinom(n, 1, pred)
-  verified <- stats::rbinom(n, 1, stats::plogis(-2 + y + as.numeric(scale(qlogis(pred)))))
+  verified <- stats::rbinom(n, 1, 0.5)
   gold <- ifelse(verified == 1L, y, NA)
   obj <- goldval(pred, y, gold, verified)
 
-  cal <- calibration(obj, method = c("OR", "AIPW"), type = c("intercept", "slope", "curve"))
-  expect_true(all(is.finite(cal$parameters$cal_intercept)))
-  expect_true(all(is.finite(cal$parameters$cal_slope)))
-  expect_true(all(is.finite(cal$curves$calibrated_risk)))
+  cal <- calibration(obj, method = c("naive", "OR", "AIPW"), type = "weak")
+  params <- cal$parameters
+  naive <- params[params$method == "naive", ]
+  or <- params[params$method == "OR", ]
+  aipw <- params[params$method == "AIPW", ]
+  expect_lt(abs(or$weak_calibration_intercept - naive$weak_calibration_intercept), 0.15)
+  expect_lt(abs(or$weak_calibration_slope - naive$weak_calibration_slope), 0.15)
+  expect_lt(abs(aipw$weak_calibration_intercept - naive$weak_calibration_intercept), 0.15)
+  expect_lt(abs(aipw$weak_calibration_slope - naive$weak_calibration_slope), 0.15)
+})
+
+test_that("OR and AIPW recover known weak calibration under proxy error", {
+  set.seed(26)
+  n <- 8000
+  pred <- stats::plogis(stats::rnorm(n))
+  lp <- qlogis(pred)
+  true_prob <- stats::plogis(-0.5 + 0.7 * lp)
+  y <- stats::rbinom(n, 1, true_prob)
+  proxy <- y
+  proxy[y == 1L] <- stats::rbinom(sum(y == 1L), 1, 0.80)
+  proxy[y == 0L] <- stats::rbinom(sum(y == 0L), 1, 0.05)
+  verified <- stats::rbinom(n, 1, 0.5)
+  gold <- ifelse(verified == 1L, y, NA)
+  obj <- goldval(pred, proxy, gold, verified)
+
+  cal <- calibration(obj, method = c("naive", "OR", "AIPW"), type = "weak")
+  params <- cal$parameters
+  naive <- params[params$method == "naive", ]
+  or <- params[params$method == "OR", ]
+  aipw <- params[params$method == "AIPW", ]
+  expect_gt(abs(naive$weak_calibration_intercept + 0.5), 0.15)
+  expect_lt(abs(or$weak_calibration_intercept + 0.5), 0.15)
+  expect_lt(abs(or$weak_calibration_slope - 0.7), 0.15)
+  expect_lt(abs(aipw$weak_calibration_intercept + 0.5), 0.15)
+  expect_lt(abs(aipw$weak_calibration_slope - 0.7), 0.15)
 })
 
 test_that("failed nuisance model yields NA corrected calibration", {
@@ -86,8 +117,32 @@ test_that("failed nuisance model yields NA corrected calibration", {
   obj <- goldval(pred, proxy, gold, verified)
   cal <- calibration(obj, method = c("OR", "AIPW"), outcome_formula = gold_outcome ~ missing_column)
   expect_equal(cal$nuisance$outcome_model_status, "failed")
-  expect_true(all(is.na(cal$parameters$cal_intercept)))
+  expect_true(all(is.na(cal$parameters$weak_calibration_intercept)))
   expect_true(all(is.na(cal$curves$calibrated_risk)))
+})
+
+test_that("calibration validates curve_df and grid", {
+  pred <- c(0.1, 0.2, 0.8, 0.9, 0.3, 0.7)
+  proxy <- c(0, 0, 1, 1, 0, 1)
+  verified <- c(1, 0, 1, 0, 1, 0)
+  gold <- ifelse(verified == 1L, proxy, NA)
+  obj <- goldval(pred, proxy, gold, verified)
+  expect_error(calibration(obj, curve_df = 3.7), "positive integer")
+  expect_error(calibration(obj, grid = c(0.1, NA)), "finite probabilities")
+  expect_error(calibration(obj, grid = c(-0.1, 0.5)), "finite probabilities")
+  cal <- calibration(obj, method = "naive", type = "curve", grid = c(0.8, 0.2, 0.2))
+  expect_equal(cal$settings$grid, c(0.2, 0.8))
+})
+
+test_that("calibration curve fails clearly with insufficient unique predictions", {
+  pred <- rep(0.2, 20)
+  proxy <- rep(c(0, 1), 10)
+  verified <- rep(c(1, 0), 10)
+  gold <- ifelse(verified == 1L, proxy, NA)
+  obj <- goldval(pred, proxy, gold, verified)
+  cal <- calibration(obj, method = "naive", type = "curve", curve_df = 4, grid = c(0.1, 0.2, 0.3))
+  expect_true(all(is.na(cal$curves$calibrated_risk)))
+  expect_true(all(cal$curves$curve_status == "insufficient_unique_predictions"))
 })
 
 test_that("plot.goldval_calibration runs", {

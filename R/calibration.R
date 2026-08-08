@@ -3,8 +3,9 @@
 #' @param object A `goldval_object`.
 #' @param method Character vector of methods. Supported methods are `"naive"`,
 #'   `"gold_only"`, `"OR"`, and `"AIPW"`.
-#' @param type Calibration outputs to return: `"intercept"`, `"slope"`, and/or
-#'   `"curve"`.
+#' @param type Calibration outputs to return: `"weak"` for logistic
+#'   recalibration intercept/slope and/or `"curve"` for a flexible calibration
+#'   curve.
 #' @param outcome_formula Formula for the gold-outcome regression model.
 #' @param verification_formula Formula for the verification model.
 #' @param curve_df Degrees of freedom for the natural spline calibration curve.
@@ -14,7 +15,7 @@
 #' @export
 calibration <- function(object,
                         method = c("naive", "gold_only", "OR", "AIPW"),
-                        type = c("intercept", "slope", "curve"),
+                        type = c("weak", "curve"),
                         outcome_formula = gold_outcome ~ proxy_outcome * qlogis_pred,
                         verification_formula = verified ~ proxy_outcome + qlogis_pred,
                         curve_df = 4,
@@ -23,10 +24,8 @@ calibration <- function(object,
     stop("`object` must be a goldval_object.", call. = FALSE)
   }
   method <- match.arg(method, several.ok = TRUE)
-  type <- match.arg(type, c("intercept", "slope", "curve"), several.ok = TRUE)
-  if (!is.numeric(curve_df) || length(curve_df) != 1L || curve_df < 1) {
-    stop("`curve_df` must be a single positive number.", call. = FALSE)
-  }
+  type <- match.arg(type, c("weak", "curve"), several.ok = TRUE)
+  curve_df <- validate_curve_df(curve_df)
 
   dat <- object$data
   dat$qlogis_pred <- qlogis_clip(dat$pred)
@@ -42,8 +41,9 @@ calibration <- function(object,
       length.out = 100L
     )
   }
+  grid <- validate_calibration_grid(grid)
 
-  parameters <- if (any(type %in% c("intercept", "slope"))) {
+  parameters <- if ("weak" %in% type) {
     do.call(rbind, lapply(method, function(m) {
       estimate_weak_calibration(dat, m, nuisance)
     }))
@@ -75,16 +75,22 @@ calibration <- function(object,
 estimate_weak_calibration <- function(dat, method, nuisance) {
   objective <- function(theta) {
     score <- calibration_score(dat, method, nuisance, theta)
+    if (anyNA(score)) return(Inf)
     sum(score^2)
   }
   fit <- try(stats::optim(c(0, 1), objective, method = "BFGS"), silent = TRUE)
   if (inherits(fit, "try-error") || fit$convergence != 0) {
-    return(data.frame(method = method, cal_intercept = NA_real_, cal_slope = NA_real_, n_used = n_used_for_method(dat, method)))
+    return(data.frame(
+      method = method,
+      weak_calibration_intercept = NA_real_,
+      weak_calibration_slope = NA_real_,
+      n_used = n_used_for_method(dat, method)
+    ))
   }
   data.frame(
     method = method,
-    cal_intercept = fit$par[[1]],
-    cal_slope = fit$par[[2]],
+    weak_calibration_intercept = fit$par[[1]],
+    weak_calibration_slope = fit$par[[2]],
     n_used = n_used_for_method(dat, method)
   )
 }
@@ -118,11 +124,24 @@ calibration_score <- function(dat, method, nuisance, theta) {
 estimate_calibration_curve <- function(dat, method, nuisance, grid, curve_df) {
   y <- calibration_curve_outcome(dat, method, nuisance)
   ok <- !is.na(y) & !is.na(dat$pred)
-  if (sum(ok) < curve_df + 2L) {
-    return(data.frame(method = method, pred = grid, calibrated_risk = NA_real_))
+  unique_pred_n <- length(unique(dat$pred[ok]))
+  if (sum(ok) < curve_df + 2L || unique_pred_n < curve_df + 1L) {
+    return(data.frame(
+      method = method,
+      pred = grid,
+      calibrated_risk = NA_real_,
+      curve_status = "insufficient_unique_predictions",
+      actual_unique_predictions = unique_pred_n
+    ))
   }
   curve <- fit_spline_curve(y[ok], dat$pred[ok], grid, curve_df)
-  data.frame(method = method, pred = grid, calibrated_risk = curve)
+  data.frame(
+    method = method,
+    pred = grid,
+    calibrated_risk = curve,
+    curve_status = "ok",
+    actual_unique_predictions = unique_pred_n
+  )
 }
 
 calibration_curve_outcome <- function(dat, method, nuisance) {
@@ -153,6 +172,26 @@ fit_spline_curve <- function(y, pred, grid, curve_df) {
 n_used_for_method <- function(dat, method) {
   if (method == "gold_only") return(sum(dat$verified == 1L))
   nrow(dat)
+}
+
+validate_curve_df <- function(curve_df) {
+  if (!is.numeric(curve_df) || length(curve_df) != 1L || is.na(curve_df) || !is.finite(curve_df)) {
+    stop("`curve_df` must be a single positive integer.", call. = FALSE)
+  }
+  if (curve_df != as.integer(curve_df) || curve_df < 1L) {
+    stop("`curve_df` must be a single positive integer.", call. = FALSE)
+  }
+  as.integer(curve_df)
+}
+
+validate_calibration_grid <- function(grid) {
+  if (!is.numeric(grid) || length(grid) < 2L) {
+    stop("`grid` must be a numeric vector with at least two values.", call. = FALSE)
+  }
+  if (anyNA(grid) || any(!is.finite(grid)) || any(grid < 0 | grid > 1)) {
+    stop("`grid` must contain finite probabilities in [0, 1].", call. = FALSE)
+  }
+  sort(unique(grid))
 }
 
 #' @export

@@ -7,7 +7,7 @@
 calibration(
   object,
   method = c("naive", "gold_only", "OR", "AIPW"),
-  type = c("intercept", "slope", "curve"),
+  type = c("weak", "curve"),
   outcome_formula = gold_outcome ~ proxy_outcome * qlogis_pred,
   verification_formula = verified ~ proxy_outcome + qlogis_pred,
   curve_df = 4,
@@ -20,8 +20,9 @@ calibration(
 \item{method}{Character vector of methods. Supported methods are \code{"naive"},
 \code{"gold_only"}, \code{"OR"}, and \code{"AIPW"}.}
 
-\item{type}{Calibration outputs to return: \code{"intercept"}, \code{"slope"}, and/or
-\code{"curve"}.}
+\item{type}{Calibration outputs to return: \code{"weak"} for logistic
+recalibration intercept/slope and/or \code{"curve"} for a flexible calibration
+curve.}
 
 \item{outcome_formula}{Formula for the gold-outcome regression model.}
 
