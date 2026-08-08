@@ -58,7 +58,15 @@ proxy <- ifelse(
   rbinom(n, 1, 0.10)
 )
 
-review_probability <- plogis(-3.15 + log(4) * proxy + 0.80 * qlogis(pmin(pmax(pred, 1e-6), 1 - 1e-6)))
+lp <- as.numeric(scale(qlogis(pmin(pmax(pred, 1e-6), 1 - 1e-6))))
+eta_no_intercept <- log(4) * proxy + 0.75 * lp
+target_gold_n <- 250L
+target_rate <- target_gold_n / n
+review_intercept <- uniroot(
+  function(a) mean(plogis(a + eta_no_intercept)) - target_rate,
+  interval = c(-20, 20)
+)$root
+review_probability <- plogis(review_intercept + eta_no_intercept)
 verified <- rbinom(n, 1, review_probability)
 
 gold <- ifelse(verified == 1L, true_outcome, NA)
@@ -187,6 +195,11 @@ boot
 
 The bootstrap object also stores replicate-level diagnostics and
 method/metric-level failure summaries.
+
+`interval_status = "ok"` indicates that enough bootstrap replicates were
+successfully estimated; it does not by itself establish adequate positivity or
+nuisance-model stability. Review `diagnose_goldval()` and bootstrap diagnostics
+alongside the interval.
 
 ```{r bootstrap-diagnostics}
 boot$failure_summary
