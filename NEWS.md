@@ -3,4 +3,5 @@
 * Initialized package skeleton.
 * Added `goldval()` object constructor.
 * Added `diagnose_goldval()` verification and positivity diagnostics.
+* Added initial `performance()` infrastructure for naive, gold-only, OR, and AIPW estimates.
 * Added initial testthat coverage for input validation and diagnostics.

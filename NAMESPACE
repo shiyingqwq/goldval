@@ -1,4 +1,6 @@
 S3method(print,goldval_diagnostics)
 S3method(print,goldval_object)
+S3method(print,goldval_performance)
 export(diagnose_goldval)
 export(goldval)
+export(performance)
