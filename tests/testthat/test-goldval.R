@@ -30,6 +30,8 @@ test_that("goldval rejects malformed inputs", {
   expect_error(goldval(c(0.1, NA), c(0, 1), c(0, NA), c(1, 0)), "missing")
   expect_error(goldval(c(-0.1, 0.2), c(0, 1), c(0, NA), c(1, 0)), "probabilities")
   expect_error(goldval(c(0.1, 0.2), c(0, 2), c(0, NA), c(1, 0)), "binary")
+  expect_error(goldval(c(0.1, 0.2), c(0, 1.2), c(0, NA), c(1, 0)), "binary")
+  expect_error(goldval(c(0.1, 0.2), c("0", "1"), c(0, NA), c(1, 0)), "coded as 0/1")
   expect_error(goldval(c(0.1, 0.2), factor(c("No", "Yes")), c(0, NA), c(1, 0)), "recoded explicitly")
   expect_error(goldval(c(0.1, 0.2), c(0, 1), c(NA, NA), c(1, 0)), "observed")
   expect_error(goldval(c(0.1, 0.2), c(0, 1), c(0, 1), c(1, 1)), "both reviewed and unreviewed")

@@ -125,8 +125,17 @@ normalize_binary <- function(x, name, allow_na) {
     out <- as.integer(x)
   } else if (is.factor(x)) {
     stop("`", name, "` must be coded as 0/1 or FALSE/TRUE. Factors such as Yes/No must be recoded explicitly.", call. = FALSE)
+  } else if (is.numeric(x) || is.integer(x)) {
+    if (any(!is.na(x) & !is.finite(x))) {
+      stop("`", name, "` must contain only finite binary values.", call. = FALSE)
+    }
+    bad_numeric <- !is.na(x) & !(x %in% c(0, 1))
+    if (any(bad_numeric)) {
+      stop("`", name, "` must be binary 0/1 or TRUE/FALSE.", call. = FALSE)
+    }
+    out <- as.integer(x)
   } else {
-    out <- suppressWarnings(as.integer(x))
+    stop("`", name, "` must be coded as 0/1 or FALSE/TRUE.", call. = FALSE)
   }
 
   if (!allow_na && anyNA(out)) {
