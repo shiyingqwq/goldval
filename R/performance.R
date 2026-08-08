@@ -25,7 +25,7 @@ performance <- function(object,
   dat <- object$data
   dat$qlogis_pred <- qlogis_clip(dat$pred)
   nuisance <- if (any(method %in% c("OR", "AIPW"))) {
-    fit_performance_nuisance(dat, outcome_formula, verification_formula)
+    fit_goldval_nuisance(dat, outcome_formula, verification_formula)
   } else {
     empty_performance_nuisance(dat)
   }
@@ -55,26 +55,6 @@ performance <- function(object,
   out
 }
 
-fit_performance_nuisance <- function(dat, outcome_formula, verification_formula) {
-  chart <- dat[dat$verified == 1L, , drop = FALSE]
-  outcome <- fit_outcome_model(chart, outcome_formula)
-  verification <- fit_verification_model(dat, verification_formula)
-  q_hat <- predict_outcome_probability(outcome$fit, dat)
-  pi_hat <- predict_verification_probability(verification$fit, dat)
-  list(
-    outcome_model = outcome$fit,
-    outcome_model_status = outcome$status,
-    outcome_model_warning_n = outcome$warning_n,
-    outcome_model_warnings = outcome$warning_messages,
-    verification_model = verification$fit,
-    verification_model_status = verification$status,
-    verification_model_warning_n = verification$warning_n,
-    verification_model_warnings = verification$warning_messages,
-    q_hat = q_hat,
-    pi_hat = pi_hat
-  )
-}
-
 empty_performance_nuisance <- function(dat) {
   list(
     outcome_model = NULL,
@@ -88,34 +68,6 @@ empty_performance_nuisance <- function(dat) {
     q_hat = rep(NA_real_, nrow(dat)),
     pi_hat = rep(NA_real_, nrow(dat))
   )
-}
-
-fit_outcome_model <- function(chart, formula) {
-  warning_n <- 0L
-  warning_messages <- character(0)
-  fit <- tryCatch(
-    withCallingHandlers(
-      stats::glm(formula, data = chart, family = stats::binomial()),
-      warning = function(w) {
-        warning_n <<- warning_n + 1L
-        warning_messages <<- unique(c(warning_messages, conditionMessage(w)))
-        invokeRestart("muffleWarning")
-      }
-    ),
-    error = function(e) NULL
-  )
-  if (is.null(fit)) {
-    return(list(fit = NULL, warning_n = warning_n, warning_messages = warning_messages, status = "failed"))
-  }
-  list(fit = fit, warning_n = warning_n, warning_messages = warning_messages, status = "ok")
-}
-
-predict_outcome_probability <- function(fit, dat) {
-  if (is.null(fit)) {
-    return(rep(mean(dat$gold_outcome[dat$verified == 1L], na.rm = TRUE), nrow(dat)))
-  }
-  pred <- suppressWarnings(stats::predict(fit, newdata = dat, type = "response"))
-  pmin(pmax(as.numeric(pred), 1e-6), 1 - 1e-6)
 }
 
 performance_outcome <- function(dat, method, nuisance) {

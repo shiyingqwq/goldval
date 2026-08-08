@@ -24,8 +24,8 @@ diagnose_goldval <- function(object,
   dat$qlogis_pred <- qlogis_clip(dat$pred)
   dat$risk_decile <- risk_decile(dat$pred, as.integer(risk_deciles))
 
-  fit_info <- fit_verification_model(dat, verification_formula)
-  pi_hat <- predict_verification_probability(fit_info$fit, dat)
+  nuisance <- fit_goldval_nuisance(dat, verification_formula = verification_formula, fit_outcome = FALSE)
+  pi_hat <- nuisance$pi_hat
   weights <- if (all(is.na(pi_hat))) rep(NA_real_, nrow(dat)) else 1 / pi_hat
 
   risk_table <- stats::aggregate(
@@ -44,7 +44,7 @@ diagnose_goldval <- function(object,
 
   enrichment <- verification_enrichment(dat)
   positivity <- data.frame(
-    model_status = fit_info$status,
+    model_status = nuisance$verification_model_status,
     min_pi = safe_min(pi_hat),
     p01_pi = safe_quantile(pi_hat, 0.01),
     p05_pi = safe_quantile(pi_hat, 0.05),
@@ -54,7 +54,7 @@ diagnose_goldval <- function(object,
     max_weight = safe_max(weights)
   )
 
-  flags <- diagnostic_flags(object, risk_table, positivity, fit_info$warning_n)
+  flags <- diagnostic_flags(object, risk_table, positivity, nuisance$verification_model_warning_n)
   out <- list(
     summary = data.frame(
       n = object$n,
@@ -67,10 +67,10 @@ diagnose_goldval <- function(object,
     enrichment = enrichment,
     positivity = positivity,
     risk_deciles = risk_table,
-    verification_model = fit_info$fit,
-    verification_model_status = fit_info$status,
-    verification_model_warning_n = fit_info$warning_n,
-    verification_model_warnings = fit_info$warning_messages,
+    verification_model = nuisance$verification_model,
+    verification_model_status = nuisance$verification_model_status,
+    verification_model_warning_n = nuisance$verification_model_warning_n,
+    verification_model_warnings = nuisance$verification_model_warnings,
     flags = flags
   )
   class(out) <- "goldval_diagnostics"
@@ -84,32 +84,6 @@ qlogis_clip <- function(p, eps = 1e-6) {
 risk_decile <- function(pred, n_groups) {
   ranks <- rank(pred, ties.method = "first")
   as.integer(ceiling(ranks / length(pred) * n_groups))
-}
-
-fit_verification_model <- function(dat, formula) {
-  warning_n <- 0L
-  warning_messages <- character(0)
-  fit <- tryCatch(
-    withCallingHandlers(
-      stats::glm(formula, data = dat, family = stats::binomial()),
-      warning = function(w) {
-        warning_n <<- warning_n + 1L
-        warning_messages <<- unique(c(warning_messages, conditionMessage(w)))
-        invokeRestart("muffleWarning")
-      }
-    ),
-    error = function(e) NULL
-  )
-  if (is.null(fit)) {
-    return(list(fit = NULL, warning_n = warning_n, warning_messages = warning_messages, status = "failed"))
-  }
-  list(fit = fit, warning_n = warning_n, warning_messages = warning_messages, status = "ok")
-}
-
-predict_verification_probability <- function(fit, dat) {
-  if (is.null(fit)) return(rep(NA_real_, nrow(dat)))
-  pi_hat <- as.numeric(stats::predict(fit, newdata = dat, type = "response"))
-  pmin(pmax(pi_hat, 1e-4), 1 - 1e-4)
 }
 
 safe_min <- function(x) {
