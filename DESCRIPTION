@@ -1,10 +1,10 @@
 Package: goldval
 Title: Clinical Prediction Validation with Error-Prone Outcomes and Partial Gold Review
-Version: 0.0.0.9000
+Version: 0.1.0
 Authors@R:
-    person("Goldval", "Developers", email = "dev@example.com", role = c("aut", "cre"))
+    person("Goldval", "Developers", email = "shiyingqwq@163.com", role = c("aut", "cre"))
 Author: Goldval Developers
-Maintainer: Goldval Developers <dev@example.com>
+Maintainer: Goldval Developers <shiyingqwq@163.com>
 Description: Provides workflow tools for validating fixed clinical prediction
     models when a proxy outcome is observed for the full validation cohort and a
     gold-standard outcome is observed only for a reviewed subset.

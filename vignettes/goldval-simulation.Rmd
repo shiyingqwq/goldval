@@ -10,5 +10,5 @@ vignette: >
 This vignette will demonstrate proxy outcomes, partial gold-standard review,
 selective verification diagnostics, and naive/gold-only/corrected validation.
 
-The current file is a placeholder until `performance()` and `calibration()` are
-implemented.
+This file is a placeholder; the substantive end-to-end workflow example is
+provided in the `goldval-workflow` vignette.
